@@ -64,28 +64,22 @@ const NotificationsScreen = ({ navigation }) => {
     noteDate > 0 ? noteDate[0].notificationId : null
   );
 
-  // 返回上一页
+  // 返回上一頁
   const handleBackPress = () => {
     navigation.goBack();
   };
 
-  // 处理文本输入变化
+  // 處理文本變化輸入
   const handleTextChange = (text) => {
     setNoteName(text);
   };
 
-  // 处理确认按钮点击
+  //處理確認按鈕點擊
   const handleConfirmPress = async () => {
     //刪除提醒
     deleteNotification();
-    // deleteRemindersTable()
-    //   .then(() => {
-    //     console.log("以刪除整個資料表");
-    //   })
-    //   .catch((error) => {
-    //     console.log(error);
-    //   });
-    // 关闭模态框;
+
+    // 關閉模態框;
     setShowModal(false);
     //// START: CALL FUNCTIONS HERE ////
     const hasPushNotificationPermissionGranted =
@@ -97,8 +91,6 @@ const NotificationsScreen = ({ navigation }) => {
     const taiwanTime = "2023-09-10T15:50:00";
     console.log("taiwanTime", new Date(taiwanTime));
     console.log("選中的時間", new Date(selectedTime));
-
-    // 将其转换为 ISO 8601 格式的时间字符串，秒和毫秒部分为 "00.000Z"
 
     //// END: CALL FUNCTIONS HERE ////
     try {
@@ -115,9 +107,9 @@ const NotificationsScreen = ({ navigation }) => {
       // 存储通知的ID到状态变量
       setNotificationId(id);
 
-      console.log("通知成功创建，ID为:", id);
+      console.log("通知成功創建，ID為:", id);
     } catch (error) {
-      console.error("创建通知时出错:", error);
+      console.error("創建通知時出錯:", error);
     }
 
     insertOrUpdateReminder(noteName, selectedTime, notificationId)

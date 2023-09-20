@@ -10,14 +10,14 @@ export const taiwanMidnight = (date) => {
 
 //月份加一
 export const addOneMonthToDate = (date) => {
-  const newDate = new Date(date); // 克隆传入的日期对象
+  const newDate = new Date(date); // 複製傳入的日期對象
   const currentMonth = newDate.getMonth();
   newDate.setMonth(currentMonth + 1);
 
-  // 处理月份溢出
+  // 處理月份溢出
   if (newDate.getMonth() === currentMonth) {
     newDate.setFullYear(newDate.getFullYear() + 1); // 增加一年
-    newDate.setMonth(0); // 设置为1月
+    newDate.setMonth(0); // 設置為1月
   }
 
   return newDate;
@@ -53,13 +53,13 @@ export const subtractDaysFromDate = (date, days) => {
   return newDate; // 返回減去後的日期物件
 };
 
-// 增加指定天数的函数
+// 增加指定天數
 export const updateDayAndAddMonth = (date, newDay) => {
-  const newDate = new Date(date); // 复制日期对象
-  newDate.setDate(newDay); // 设置日期对象的日字段为新的值
+  const newDate = new Date(date); // 複製日期對象
+  newDate.setDate(newDay); // 設置日期對象的日字段為新的值
 
-  // 增加一个月
+  // 增加一個月
   newDate.setMonth(newDate.getMonth() + 1);
 
-  return newDate; // 返回更新后的日期对象
+  return newDate; // 返回更新後的日期對象
 };

@@ -19,7 +19,7 @@ import {
   Transfer,
 } from "./screens";
 
-//確保資料庫初始化前不要加載完成應用程師
+//確保資料庫初始化前不要加載完成應用程式
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect, useState } from "react";
 import { init } from "./database/database";
