@@ -1,0 +1,1379 @@
+//Expo SQLite
+//https://docs.expo.dev/versions/latest/sdk/sqlite/
+import * as SQLite from "expo-sqlite";
+import { Account, Expense } from "../models/expense";
+import {
+  addOneMonthToDate,
+  addOneYearToDate,
+  taiwanMidnight,
+} from "../util/date";
+
+const expenseOptions = [
+  {
+    type: "MaterialCommunityIcons",
+    icon: "bread-slice",
+    label: "早餐",
+    value: "早餐",
+  },
+  {
+    type: "MaterialIcons",
+    icon: "lunch-dining",
+    label: "午餐",
+    value: "午餐",
+  },
+  {
+    type: "MaterialCommunityIcons",
+    icon: "food-turkey",
+    label: "晚餐",
+    value: "晚餐",
+  },
+  {
+    type: "MaterialCommunityIcons",
+    icon: "train",
+    label: "交通",
+    value: "交通",
+  },
+  {
+    type: "Feather",
+    icon: "shopping-cart",
+    label: "日常用品",
+    value: "日常用品",
+  },
+  {
+    type: "MaterialCommunityIcons",
+    icon: "party-popper",
+    label: "娛樂",
+    value: "娛樂",
+  },
+  {
+    type: "MaterialCommunityIcons",
+    icon: "handshake-outline",
+    label: "社交",
+    value: "社交",
+  },
+  {
+    type: "FontAwesome5",
+    icon: "shopping-bag",
+    label: "購物",
+    value: "購物",
+  },
+  {
+    type: "MaterialIcons",
+    icon: "house",
+    label: "房租",
+    value: "房租",
+  },
+  {
+    type: "Feather",
+    icon: "gift",
+    label: "禮物",
+    value: "禮物",
+  },
+  {
+    type: "Ionicons",
+    icon: "md-medkit-outline",
+    label: "醫療",
+    value: "醫療",
+  },
+  {
+    type: "AntDesign",
+    icon: "linechart",
+    label: "投資",
+    value: "投資",
+  },
+  {
+    type: "FontAwesome",
+    icon: "credit-card",
+    label: "卡費",
+    value: "卡費",
+  },
+  {
+    type: "MaterialCommunityIcons",
+    icon: "bank-transfer-out",
+    label: "轉帳",
+    value: "轉帳",
+  },
+  {
+    type: "MaterialCommunityIcons",
+    icon: "label-outline",
+    label: "其他",
+    value: "其他",
+  },
+];
+
+const incomeOptions = [
+  {
+    type: "MaterialIcons",
+    icon: "business-center",
+    label: "薪水",
+    value: "薪水",
+  },
+  {
+    type: "MaterialCommunityIcons",
+    icon: "account-cash",
+    label: "生活費",
+    value: "生活費",
+  },
+  {
+    type: "AntDesign",
+    icon: "redenvelopes",
+    label: "紅包",
+    value: "紅包",
+  },
+  {
+    type: "FontAwesome5",
+    icon: "money-bill-wave",
+    label: "營業所得",
+    value: "營業所得",
+  },
+  {
+    type: "Ionicons",
+    icon: "school",
+    label: "補助金",
+    value: "補助金",
+  },
+  {
+    type: "FontAwesome",
+    icon: "trophy",
+    label: "獎金",
+    value: "獎金",
+  },
+  {
+    type: "FontAwesome",
+    icon: "line-chart",
+    label: "投資所得",
+    value: "投資所得",
+  },
+];
+
+//創建資料庫
+const database = SQLite.openDatabase("expense.db");
+
+// 新增一個檢查並更新預算的函數
+const checkAndResetBudget = () => {
+  return new Promise((resolve, reject) => {
+    fetchBudge()
+      .then((budge) => {
+        if (budge && budge.reset) {
+          // 检查 budge 是否存在
+          const currentDate = taiwanMidnight(new Date());
+          const endDate = taiwanMidnight(new Date(budge.endDate));
+
+          if (currentDate >= endDate) {
+            let newEndDate = taiwanMidnight(new Date(endDate));
+            let newAmount = budge.tempAmount;
+
+            if (budge.type === "month") {
+              newEndDate = addOneMonthToDate(newEndDate);
+            } else if (budge.type === "year") {
+              newEndDate = addOneYearToDate(newEndDate);
+            }
+
+            // 更新预算记录的 endDate 和 amount
+            updateBudgeEndDateAndAmount(newEndDate, newAmount)
+              .then(() => {
+                console.log("預算已重置");
+                resolve(); // 成功时解析 Promise
+              })
+              .catch((error) => {
+                console.error("更新預算时发生错误", error);
+                reject(error); // 失败时拒绝 Promise
+              });
+          } else {
+            resolve(); // 当不需要重置预算时也解析 Promise
+          }
+        } else {
+          // 如果没有预算记录，可以执行默认操作，或者根据需求处理
+          console.log("没有预算记录或未设置重置");
+          resolve();
+        }
+      })
+      .catch((error) => {
+        console.error("檢查並更新預算时发生错误", error);
+        reject(error); // 失败时拒绝 Promise
+      });
+  });
+};
+
+// 更新預算表中的 endDate 和 amount
+// 更新预算表中的 endDate 和 amount，并将 beginDate 设置为今天的日期
+const updateBudgeEndDateAndAmount = (newEndDate, newAmount) => {
+  const currentDate = taiwanMidnight(new Date()); // 获取当前日期
+  const formattedCurrentDate = currentDate.toISOString().split("T")[0];
+
+  return new Promise((resolve, reject) => {
+    database.transaction((tx) => {
+      tx.executeSql(
+        "UPDATE budge SET endDate = ?, amount = ?, beginDate = ? WHERE id = 1",
+        [
+          newEndDate.toISOString().split("T")[0],
+          newAmount,
+          formattedCurrentDate, // 将 beginDate 设置为当前日期
+        ],
+        (_, result) => {
+          resolve(result);
+        },
+        (_, error) => {
+          reject(error);
+        }
+      );
+    });
+  });
+};
+
+//創建expenses資料表
+// 初始化函數
+// 初始化函数
+// 初始化函數
+// 初始化函数
+export const init = () => {
+  const promise = new Promise((resolve, reject) => {
+    database.transaction(
+      (tx) => {
+        // 初始化 expenses 表格
+        tx.executeSql(
+          "CREATE TABLE IF NOT EXISTS expenses (id INTEGER PRIMARY KEY, inserDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP, date TEXT, amount TEXT, description TEXT, type TEXT, category TEXT, account TEXT, icon_type TEXT, icon_name TEXT)",
+          [],
+          () => {
+            console.log("expenses 表格初始化成功");
+
+            // 初始化 accounts 表格
+            tx.executeSql(
+              "CREATE TABLE IF NOT EXISTS accounts (id INTEGER PRIMARY KEY, name TEXT, balance REAL)",
+              [],
+              () => {
+                console.log("accounts 表格初始化成功");
+
+                // 检查是否已经存在默认账户记录
+                tx.executeSql(
+                  "SELECT COUNT(*) AS count FROM accounts",
+                  [],
+                  (_, result) => {
+                    const count = result.rows.item(0).count;
+                    if (count === 0) {
+                      // 插入默认账户记录
+                      const defaultAccounts = [
+                        { name: "現金", balance: 0 },
+                        { name: "玉山銀行", balance: 0 },
+                        { name: "國泰世華", balance: 0 },
+                        { name: "中國信託", balance: 0 },
+                        { name: "台北富邦", balance: 0 },
+                        { name: "中華郵政", balance: 0 },
+                        { name: "Line Bank", balance: 0 },
+                        { name: "將來銀行", balance: 0 },
+                        // 添加更多默认账户记录
+                      ];
+
+                      defaultAccounts.forEach((account) => {
+                        tx.executeSql(
+                          "INSERT INTO accounts (name, balance) VALUES (?, ?)",
+                          [account.name, account.balance],
+                          () => {
+                            console.log(
+                              `插入默认账户记录成功：${account.name}`
+                            );
+                          },
+                          (_, error) => {
+                            console.log(
+                              `插入默认账户记录失败：${account.name}`,
+                              error
+                            );
+                          }
+                        );
+                      });
+                    }
+                  },
+                  (_, error) => {
+                    console.log("检查账户记录数量时出错", error);
+                  }
+                );
+              },
+              (_, error) => {
+                console.log("accounts 表格初始化失败", error);
+              }
+            );
+          },
+          (_, error) => {
+            console.log("expenses 表格初始化失败", error);
+          }
+        );
+
+        // 初始化 budge 表格
+        tx.executeSql(
+          "CREATE TABLE IF NOT EXISTS budge (id INTEGER PRIMARY KEY, amount REAL, tempAmount REAL, type TEXT, beginDate TEXT, endDate TEXT, reset BOOLEAN, showOnMainScreen BOOLEAN, startDate TEXT)",
+          [],
+          () => {
+            console.log("budge 表格初始化成功");
+
+            // 在初始化后检查并更新预算
+            tx.executeSql(
+              "SELECT endDate, reset FROM budge WHERE id = 1",
+              [],
+              (_, result) => {
+                if (result.rows.length > 0) {
+                  const budgeData = result.rows.item(0);
+                  const endDate = new Date(budgeData.endDate);
+                  const currentDate = taiwanMidnight(new Date());
+
+                  if (currentDate >= endDate && !budgeData.reset) {
+                    // 如果當前日期大於等於 endDate 且 reset 為 false，則刪除 budge 表格中的全部數據
+                    tx.executeSql(
+                      "DELETE FROM budge",
+                      [],
+                      () => {
+                        console.log("已刪除 budge 表格中的全部數據");
+                      },
+                      (_, error) => {
+                        console.log("刪除 budge 表格數據時出錯", error);
+                      }
+                    );
+                  }
+                }
+              },
+              (_, error) => {
+                console.log("查詢 budge 表格數據時出錯", error);
+              }
+            );
+          },
+          (_, error) => {
+            console.log("budge 表格初始化失败", error);
+          }
+        );
+
+        // 初始化 expenseCategory 表格
+        tx.executeSql(
+          "CREATE TABLE IF NOT EXISTS expenseCategory (id INTEGER PRIMARY KEY, type TEXT, icon TEXT, label TEXT, value TEXT)",
+          [],
+          () => {
+            console.log("expenseCategory 表格初始化成功");
+            // 检查是否已经存在类别记录
+            tx.executeSql(
+              "SELECT COUNT(*) AS count FROM expenseCategory",
+              [],
+              (_, result) => {
+                const count = result.rows.item(0).count;
+                if (count === 0) {
+                  // 插入类别数据
+                  expenseOptions.forEach((category) => {
+                    tx.executeSql(
+                      "INSERT INTO expenseCategory (type, icon, label, value) VALUES (?, ?, ?, ?)",
+                      [
+                        category.type,
+                        category.icon,
+                        category.label,
+                        category.value,
+                      ],
+                      () => {
+                        console.log(`插入类别成功：${category.label}`);
+                      },
+                      (_, error) => {
+                        console.log(`插入类别失败：${category.label}`, error);
+                      }
+                    );
+                  });
+                }
+              },
+              (_, error) => {
+                console.log("检查 expenseCategory 表格记录数量时出错", error);
+              }
+            );
+          },
+          (_, error) => {
+            console.log("expenseCategory 表格初始化失败", error);
+          }
+        );
+
+        // 初始化 incomeCategory 表格
+        tx.executeSql(
+          "CREATE TABLE IF NOT EXISTS incomeCategory (id INTEGER PRIMARY KEY, type TEXT, icon TEXT, label TEXT, value TEXT)",
+          [],
+          () => {
+            console.log("incomeCategory 表格初始化成功");
+            // 检查是否已经存在收入类别记录
+            tx.executeSql(
+              "SELECT COUNT(*) AS count FROM incomeCategory",
+              [],
+              (_, result) => {
+                const count = result.rows.item(0).count;
+                if (count === 0) {
+                  // 插入默认的收入类别记录
+                  incomeOptions.forEach((category) => {
+                    tx.executeSql(
+                      "INSERT INTO incomeCategory (type, icon, label, value) VALUES (?, ?, ?, ?)",
+                      [
+                        category.type,
+                        category.icon,
+                        category.label,
+                        category.value,
+                      ],
+                      () => {
+                        console.log(`插入收入类别成功：${category.label}`);
+                      },
+                      (_, error) => {
+                        console.log(
+                          `插入收入类别失败：${category.label}`,
+                          error
+                        );
+                      }
+                    );
+                  });
+                }
+              },
+              (_, error) => {
+                console.log("检查 incomeCategory 表格记录数量时出错", error);
+              }
+            );
+          },
+          (_, error) => {
+            console.log("incomeCategory 表格初始化失败", error);
+          }
+        );
+        // 在初始化后检查并更新预算
+        checkAndResetBudget()
+          .then(() => {
+            console.log("预算检查和重置完成");
+          })
+          .catch((error) => {
+            console.error("预算检查和重置时发生错误", error);
+          });
+      },
+      (_, error) => {
+        console.log("数据库事务初始化失败", error);
+        reject(error);
+      },
+      (_, success) => {
+        console.log("数据库事务初始化成功");
+        resolve(success);
+      }
+    );
+  });
+
+  return promise;
+};
+
+//將資料插入expenses資料表內
+export const insertExpense = (
+  date,
+  amount,
+  description,
+  type,
+  category,
+  account,
+  icon
+) => {
+  // 格式化日期为 "YYYY-MM-DD" 格式
+  const formattedDate = new Date(date).toISOString().split("T")[0];
+
+  const promise = new Promise((resolve, reject) => {
+    database.transaction((tx) => {
+      // 更新账户余额
+      tx.executeSql(
+        "UPDATE accounts SET balance = balance + ? WHERE name = ?",
+        [type === "expense" ? -amount : amount, account],
+        (_, balanceResult) => {
+          if (balanceResult.rowsAffected > 0) {
+            // 更新账户余额成功后，插入交易记录
+            tx.executeSql(
+              "INSERT INTO expenses (date, amount, description, type, category, account, icon_type, icon_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+              [
+                formattedDate,
+                amount,
+                description,
+                type,
+                category,
+                account,
+                icon.type,
+                icon.name,
+              ],
+              (_, insertResult) => {
+                console.log("插入交易记录成功");
+                resolve(insertResult);
+              },
+              (_, error) => {
+                console.log("插入交易记录失败");
+                reject(error);
+              }
+            );
+          } else {
+            console.log("更新账户余额失败");
+            reject(new Error("更新账户余额失败"));
+          }
+        },
+        (_, error) => {
+          console.log("更新账户余额失败");
+          reject(error);
+        }
+      );
+    });
+  });
+
+  return promise;
+};
+
+//抓出符合日期的資料
+export const fetchExpenses = (targetDate) => {
+  // 将传递的日期转换为数据库中日期格式的字符串
+  const formattedDate = new Date(targetDate).toISOString().split("T")[0];
+
+  const promise = new Promise((resolve, reject) => {
+    database.transaction((tx) => {
+      tx.executeSql(
+        "SELECT * FROM expenses WHERE date = ?",
+        [formattedDate], // 使用格式化后的日期
+        (_, result) => {
+          const expenses = [];
+          for (let db of result.rows._array) {
+            expenses.push(
+              new Expense(
+                db.id,
+                db.date,
+                db.amount,
+                db.description,
+                db.type,
+                db.category,
+                db.account,
+                db.icon_type,
+                db.icon_name
+              )
+            );
+          }
+          resolve(expenses);
+        },
+        (_, error) => {
+          reject(error);
+          console.log("抓取資料失敗");
+        }
+      );
+    });
+  });
+
+  return promise;
+};
+
+export const fetchAllExpenses = () => {
+  const promise = new Promise((resolve, reject) => {
+    database.transaction((tx) => {
+      tx.executeSql(
+        "SELECT * FROM expenses",
+        [], // 将传入的日期作为参数传递给查询
+        (_, result) => {
+          const expenses = [];
+          for (let db of result.rows._array) {
+            expenses.push(
+              new Expense(
+                db.id,
+                db.date,
+                db.amount,
+                db.description,
+                db.type,
+                db.category,
+                db.account,
+                db.icon_type,
+                db.icon_name
+              )
+            );
+          }
+          resolve(expenses);
+        },
+        (_, error) => {
+          reject(error);
+          console.log("抓取資料失敗");
+        }
+      );
+    });
+  });
+
+  return promise;
+};
+
+export const fetchAllAccounts = () => {
+  const promise = new Promise((resolve, reject) => {
+    database.transaction((tx) => {
+      tx.executeSql(
+        "SELECT * FROM accounts",
+        [], // 将传入的日期作为参数传递给查询
+        (_, result) => {
+          const expenses = [];
+          for (let db of result.rows._array) {
+            expenses.push(new Account(db.id, db.name, db.balance));
+          }
+          resolve(expenses);
+        },
+        (_, error) => {
+          reject(error);
+          console.log("抓取資料失敗");
+        }
+      );
+    });
+  });
+
+  return promise;
+};
+
+//抓出符合id的資料
+export const fetchExpenseById = (id) => {
+  const promise = new Promise((resolve, reject) => {
+    database.transaction((tx) => {
+      tx.executeSql(
+        "SELECT * FROM expenses WHERE id = ?",
+        [id],
+        (_, result) => {
+          const db = result.rows._array[0];
+          const place = new Expense(
+            db.id,
+            db.date,
+            db.amount,
+            db.description,
+            db.type,
+            db.category,
+            db.account,
+            db.icon_type,
+            db.icon_name
+          );
+          console.log("fetchById成功");
+          resolve(place);
+        },
+        (_, error) => {
+          console.log("fetchById失敗");
+          reject(error);
+        }
+      );
+    });
+  });
+  return promise;
+};
+
+//刪除指定的檔案
+export const deleteExpenseById = (id) => {
+  const promise = new Promise((resolve, reject) => {
+    let expenseData; // 存储支出记录的数据
+
+    database.transaction((tx) => {
+      // 从支出记录中获取数据（包括金额和关联的帐户）
+      tx.executeSql(
+        "SELECT * FROM expenses WHERE id = ?",
+        [id],
+        (_, result) => {
+          const expense = result.rows._array[0];
+          expenseData = {
+            amount: expense.amount,
+            account: expense.account,
+            type: expense.type,
+          };
+
+          // 开始删除支出记录
+          tx.executeSql(
+            "DELETE FROM expenses WHERE id = ?",
+            [id],
+            (_, deleteResult) => {
+              console.log("deleteById成功");
+
+              // 还原相关账户的余额
+              if (expenseData.type === "expense") {
+                // 如果原始记录是支出，将金额加回帐户余额
+                tx.executeSql(
+                  "UPDATE accounts SET balance = balance + ? WHERE name = ?",
+                  [expenseData.amount, expenseData.account],
+                  (_, updateResult) => {
+                    console.log("还原账户余额成功");
+                    resolve(deleteResult); // 成功删除并还原余额
+                  },
+                  (_, error) => {
+                    console.log("还原账户余额失败");
+                    reject(error);
+                  }
+                );
+              } else {
+                // 如果原始记录是收入，将金额从帐户余额中减去
+                tx.executeSql(
+                  "UPDATE accounts SET balance = balance - ? WHERE name = ?",
+                  [expenseData.amount, expenseData.account],
+                  (_, updateResult) => {
+                    console.log("还原账户余额成功");
+                    resolve(deleteResult); // 成功删除并还原余额
+                  },
+                  (_, error) => {
+                    console.log("还原账户余额失败");
+                    reject(error);
+                  }
+                );
+              }
+            },
+            (_, error) => {
+              console.log("deleteById失敗");
+              reject(error);
+            }
+          );
+        },
+        (_, error) => {
+          console.log("查询支出记录失败");
+          reject(error);
+        }
+      );
+    });
+  });
+  return promise;
+};
+
+//編輯指定檔案
+export const updateExpenseById = (
+  id,
+  date,
+  amount,
+  description,
+  category,
+  account,
+  icon_type,
+  icon_name
+) => {
+  const promise = new Promise((resolve, reject) => {
+    console.log("dbDate", date);
+    database.transaction((tx) => {
+      const query = `
+        UPDATE expenses 
+        SET date = ?, amount = ?, description = ?, category = ?, account = ?, icon_type = ?, icon_name = ?
+        WHERE id = ?;
+      `;
+      tx.executeSql(
+        query,
+        [
+          date,
+          amount,
+          description,
+          category,
+          account,
+          icon_type,
+          icon_name,
+          id,
+        ],
+        (_, result) => {
+          console.log("updateById成功");
+          resolve(result);
+        },
+        (_, error) => {
+          console.log("updateById失敗");
+          reject(error);
+        }
+      );
+    });
+  });
+  return promise;
+};
+
+export const createOrUpdateBudge = (
+  amount,
+  type,
+  beginDate,
+  endDate,
+  reset,
+  showOnMainScreen,
+  startDate
+) => {
+  const promise = new Promise((resolve, reject) => {
+    const resetInt = reset ? 1 : 0;
+    const showOnMainScreenInt = showOnMainScreen ? 1 : 0;
+    const tempAmount = amount;
+
+    database.transaction((tx) => {
+      tx.executeSql(
+        "CREATE TABLE IF NOT EXISTS budge (id INTEGER PRIMARY KEY, amount REAL, tempAmount REAL, type TEXT, beginDate TEXT, endDate TEXT, reset BOOLEAN, showOnMainScreen BOOLEAN, startDate TEXT)"
+      );
+
+      tx.executeSql(
+        "INSERT OR REPLACE INTO budge (id, amount, tempAmount, type, beginDate, endDate, reset, showOnMainScreen, startDate) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+          amount,
+          tempAmount,
+          type,
+          beginDate,
+          endDate,
+          resetInt,
+          showOnMainScreenInt,
+          startDate,
+        ],
+        (_, result) => {
+          resolve(result);
+        },
+        (_, error) => {
+          reject(error);
+        }
+      );
+    });
+  });
+  return promise;
+};
+
+//編輯主畫面是否可見
+export const updateShowOnMainScreen = (showOnMainScreen) => {
+  const promise = new Promise((resolve, reject) => {
+    const showOnMainScreenInt = showOnMainScreen ? 1 : 0; // 轉換布林值為整數
+
+    database.transaction((tx) => {
+      tx.executeSql(
+        "CREATE TABLE IF NOT EXISTS budge (id INTEGER PRIMARY KEY, amount REAL, type TEXT, beginDate TEXT, endDate TEXT, reset BOOLEAN, showOnMainScreen BOOLEAN)"
+      );
+
+      // 更新 showOnMainScreen 欄位
+      tx.executeSql(
+        "UPDATE budge SET showOnMainScreen = ? WHERE id = 1",
+        [showOnMainScreenInt],
+        (_, result) => {
+          resolve(result);
+        },
+        (_, error) => {
+          reject(error);
+        }
+      );
+    });
+  });
+  return promise;
+};
+
+export const fetchBudge = () => {
+  const promise = new Promise((resolve, reject) => {
+    database.transaction((tx) => {
+      tx.executeSql(
+        "SELECT * FROM budge",
+        [],
+        (_, result) => {
+          resolve(result.rows._array[0]);
+        },
+        (_, error) => {
+          reject(error);
+        }
+      );
+    });
+  });
+  return promise;
+};
+
+//計算剩餘預算
+export const fetchRemainingBudget = (startDate, endDate) => {
+  console.log("startDate:", startDate);
+  console.log("endDate:", endDate);
+
+  const promise = new Promise((resolve, reject) => {
+    database.transaction((tx) => {
+      tx.executeSql(
+        "SELECT amount FROM budge WHERE id = 1",
+        [],
+        (_, result) => {
+          const budgeAmount = result.rows._array[0]?.amount || 0;
+
+          tx.executeSql(
+            "SELECT SUM(amount) AS totalAmount FROM expenses WHERE type = ? AND date >= ? AND date <= ?",
+            ["expense", startDate, endDate],
+            (_, result) => {
+              const totalExpense = result.rows._array[0]?.totalAmount || 0;
+              const remainingBudget = budgeAmount - totalExpense;
+              resolve(remainingBudget);
+              console.log("budgeAmount:", budgeAmount);
+              console.log("totalExpense:", totalExpense);
+              console.log("remainingBudget:", remainingBudget);
+            },
+            (_, error) => {
+              reject(error);
+            }
+          );
+        },
+        (_, error) => {
+          reject(error);
+        }
+      );
+    });
+  });
+  return promise;
+};
+
+//抓出兩個指定日期之間的支出類別分別的金額
+export const fetchCategoryTotalsBetweenDates = (
+  startDate,
+  endDate,
+  account,
+  type // 新增 type 参数
+) => {
+  const promise = new Promise((resolve, reject) => {
+    database.transaction((tx) => {
+      let query =
+        "SELECT category, icon_name, icon_type, SUM(CAST(amount AS REAL)) AS totalAmount FROM expenses WHERE date >= ? AND date <= ?";
+      const queryParams = [startDate, endDate];
+
+      if (account) {
+        query += " AND account = ?";
+        queryParams.push(account);
+      }
+
+      // 根据 type 进行过滤
+      if (type === "expense") {
+        query += " AND type = 'expense'";
+      } else if (type === "income") {
+        query += " AND type = 'income'";
+      }
+
+      query += " GROUP BY category, icon_name, icon_type";
+
+      tx.executeSql(
+        query,
+        queryParams,
+        (_, result) => {
+          const categoryTotals = result.rows._array.map((row) => ({
+            category: row.category,
+            icon_name: row.icon_name,
+            icon_type: row.icon_type,
+            totalAmount: row.totalAmount,
+          }));
+
+          // 计算总数
+          const totalSum = categoryTotals.reduce(
+            (sum, category) => sum + category.totalAmount,
+            0
+          );
+
+          // 返回数据
+          resolve({ categoryTotals, totalSum });
+        },
+        (_, error) => {
+          reject(error);
+        }
+      );
+    });
+  });
+  return promise;
+};
+
+//取得支出類別
+export const getExpenseCategories = () => {
+  return new Promise((resolve, reject) => {
+    database.transaction(
+      (tx) => {
+        tx.executeSql(
+          "SELECT * FROM expenseCategory",
+          [],
+          (_, result) => {
+            const categories = result.rows._array;
+            resolve(categories);
+          },
+          (_, error) => {
+            reject(error);
+          }
+        );
+      },
+      (_, error) => {
+        reject(error);
+      }
+    );
+  });
+};
+
+//存入新順序的updateExpenseCategories
+
+export const updateExpenseCategories = (sortedData) => {
+  return new Promise((resolve, reject) => {
+    // 开始事务
+    database.transaction(
+      (tx) => {
+        // 删除现有数据
+        tx.executeSql(
+          "DELETE FROM expenseCategory",
+          [],
+          () => {
+            // 插入新的排序后数据
+            sortedData.forEach((item, index) => {
+              tx.executeSql(
+                "INSERT INTO expenseCategory (type, icon, label, value) VALUES (?, ?, ?, ?)",
+                [item.type, item.icon, item.label, item.value],
+                () => {
+                  if (index === sortedData.length - 1) {
+                    // 所有插入操作完成后，提交事务
+                    resolve();
+                  }
+                },
+                (_, error) => {
+                  // 插入数据失败
+                  reject(error);
+                }
+              );
+            });
+          },
+          (_, error) => {
+            // 删除数据失败
+            reject(error);
+          }
+        );
+      },
+      (_, error) => {
+        // 事务执行失败
+        reject(error);
+      }
+    );
+  });
+};
+
+// 取得收入類別
+export const getIncomeCategories = () => {
+  return new Promise((resolve, reject) => {
+    database.transaction(
+      (tx) => {
+        tx.executeSql(
+          "SELECT * FROM incomeCategory",
+          [],
+          (_, result) => {
+            const categories = result.rows._array;
+            resolve(categories);
+          },
+          (_, error) => {
+            reject(error);
+          }
+        );
+      },
+      (_, error) => {
+        reject(error);
+      }
+    );
+  });
+};
+
+// 存入新順序的 updateIncomeCategories
+export const updateIncomeCategories = (sortedData) => {
+  return new Promise((resolve, reject) => {
+    // 開始事務
+    database.transaction(
+      (tx) => {
+        // 刪除現有數據
+        tx.executeSql(
+          "DELETE FROM incomeCategory",
+          [],
+          () => {
+            // 插入新的排序后数据
+            sortedData.forEach((item, index) => {
+              tx.executeSql(
+                "INSERT INTO incomeCategory (type, icon, label, value) VALUES (?, ?, ?, ?)",
+                [item.type, item.icon, item.label, item.value],
+                () => {
+                  if (index === sortedData.length - 1) {
+                    // 所有插入操作完成后，提交事务
+                    resolve();
+                  }
+                },
+                (_, error) => {
+                  // 插入数据失败
+                  reject(error);
+                }
+              );
+            });
+          },
+          (_, error) => {
+            // 刪除數據失败
+            reject(error);
+          }
+        );
+      },
+      (_, error) => {
+        // 事务执行失败
+        reject(error);
+      }
+    );
+  });
+};
+
+// 更新 accounts 資料表
+export const updateAccounts = (sortedData) => {
+  return new Promise((resolve, reject) => {
+    // 開始事務
+    database.transaction(
+      (tx) => {
+        // 刪除現有數據
+        tx.executeSql(
+          "DELETE FROM accounts",
+          [],
+          () => {
+            // 插入新的排序后数据
+            sortedData.forEach((item, index) => {
+              tx.executeSql(
+                "INSERT INTO accounts (name, balance) VALUES (?, ?)",
+                [item.name, item.balance],
+                () => {
+                  if (index === sortedData.length - 1) {
+                    // 所有插入操作完成后，提交事务
+                    resolve();
+                  }
+                },
+                (_, error) => {
+                  // 插入数据失败
+                  reject(error);
+                }
+              );
+            });
+          },
+          (_, error) => {
+            // 刪除數據失败
+            reject(error);
+          }
+        );
+      },
+      (_, error) => {
+        // 事务执行失败
+        reject(error);
+      }
+    );
+  });
+};
+
+export const deleteAccountById = (id) => {
+  return new Promise((resolve, reject) => {
+    database.transaction((tx) => {
+      tx.executeSql(
+        "DELETE FROM accounts WHERE id = ?",
+        [id],
+        (_, result) => {
+          console.log("刪除資料成功");
+          resolve(result);
+        },
+        (_, error) => {
+          console.log("刪除資料失敗");
+          reject(error);
+        }
+      );
+    });
+  });
+};
+
+//新增帳戶餘額
+export const setBalanceById = (id, newBalance) => {
+  return new Promise((resolve, reject) => {
+    database.transaction((tx) => {
+      tx.executeSql(
+        "UPDATE accounts SET balance = ? WHERE id = ?",
+        [newBalance, id],
+        (_, result) => {
+          console.log("更新账户余额成功");
+          resolve(result);
+        },
+        (_, error) => {
+          console.log("更新账户余额失败");
+          reject(error);
+        }
+      );
+    });
+  });
+};
+
+// 执行帐户之间的资金转移（不检查余额）
+export const transferFunds = (fromAccount, toAccount, amount) => {
+  return new Promise((resolve, reject) => {
+    database.transaction((tx) => {
+      // 直接从转出帐户中扣除金额
+      tx.executeSql(
+        "UPDATE accounts SET balance = balance - ? WHERE name = ?",
+        [amount, fromAccount],
+        (_, updateResult) => {
+          if (updateResult.rowsAffected > 0) {
+            // 更新成功，现在更新转入帐户余额
+            tx.executeSql(
+              "UPDATE accounts SET balance = balance + ? WHERE name = ?",
+              [amount, toAccount],
+              (_, updateToAccountResult) => {
+                if (updateToAccountResult.rowsAffected > 0) {
+                  // 转账成功，提交事务
+                  resolve();
+                } else {
+                  // 更新转入帐户余额失败
+                  reject(new Error("更新转入帐户余额失败，请稍后重试。"));
+                }
+              },
+              (_, error) => {
+                // 更新转入帐户余额时出错
+                reject(error);
+              }
+            );
+          } else {
+            // 更新转出帐户余额失败
+            reject(new Error("更新转出帐户余额失败，请稍后重试。"));
+          }
+        },
+        (_, error) => {
+          // 更新转出帐户余额时出错
+          reject(error);
+        }
+      );
+    });
+  });
+};
+
+export const insertOrUpdateReminder = (name, time, notificationId) => {
+  return new Promise((resolve, reject) => {
+    const timeString = time.toISOString();
+
+    database.transaction((tx) => {
+      tx.executeSql(
+        "CREATE TABLE IF NOT EXISTS reminders (id INTEGER PRIMARY KEY, name TEXT, time TEXT, notificationId TEXT);",
+        [],
+        () => {
+          console.log("提醒表已创建或已存在");
+
+          // 查找是否已存在提醒
+          tx.executeSql(
+            "SELECT * FROM reminders LIMIT 1;",
+            [],
+            (_, { rows }) => {
+              if (rows.length === 0) {
+                // 表中没有提醒，插入新提醒
+                tx.executeSql(
+                  "INSERT INTO reminders (name, time, notificationId) VALUES (?, ?, ?);",
+                  [name, timeString, notificationId], // 插入日期字符串和通知ID
+                  (_, result) => {
+                    console.log("提醒已插入");
+                    resolve(result);
+                  },
+                  (_, error) => {
+                    console.error("插入提醒时出错：", error);
+                    reject(error);
+                  }
+                );
+              } else {
+                // 表中已有提醒，更新现有提醒
+                tx.executeSql(
+                  "UPDATE reminders SET name = ?, time = ?, notificationId = ?;",
+                  [name, timeString, notificationId], // 更新提醒名称、时间和通知ID
+                  (_, result) => {
+                    console.log("提醒已更新");
+                    resolve(result);
+                  },
+                  (_, error) => {
+                    console.error("更新提醒时出错：", error);
+                    reject(error);
+                  }
+                );
+              }
+            },
+            (_, error) => {
+              console.error("查询提醒时出错：", error);
+              reject(error);
+            }
+          );
+        },
+        (_, error) => {
+          console.error("创建提醒表时出错：", error);
+          reject(error);
+        }
+      );
+    });
+  });
+};
+
+export const getAllReminders = () => {
+  return new Promise((resolve, reject) => {
+    database.transaction((tx) => {
+      // 查询前先检查表是否存在
+      tx.executeSql(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='reminders';",
+        [],
+        (_, result) => {
+          if (result.rows.length === 0) {
+            // 如果表不存在，返回空数组
+            console.log("提醒表不存在");
+            resolve([]);
+          } else {
+            // 查询所有提醒
+            tx.executeSql(
+              "SELECT * FROM reminders;",
+              [],
+              (_, { rows }) => {
+                const reminders = rows._array; // 获取查询结果数组
+                console.log("获取所有提醒成功");
+                resolve(reminders);
+              },
+              (_, error) => {
+                console.error("查询提醒时出错：", error);
+                reject(error);
+              }
+            );
+          }
+        },
+        (_, error) => {
+          console.error("检查提醒表是否存在时出错：", error);
+          reject(error);
+        }
+      );
+    });
+  });
+};
+
+export const deleteAllReminders = () => {
+  return new Promise((resolve, reject) => {
+    database.transaction((tx) => {
+      tx.executeSql(
+        "CREATE TABLE IF NOT EXISTS reminders (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, time TEXT, notificationId TEXT);",
+        [],
+        () => {
+          console.log("提醒表已创建或已存在");
+
+          // 删除所有提醒
+          tx.executeSql(
+            "DELETE FROM reminders;",
+            [],
+            (_, result) => {
+              console.log("删除所有提醒成功");
+              resolve(result);
+            },
+            (_, error) => {
+              console.error("删除提醒时出错：", error);
+              reject(error);
+            }
+          );
+        },
+        (_, error) => {
+          console.error("创建提醒表时出错：", error);
+          reject(error);
+        }
+      );
+    });
+  });
+};
+
+export const deleteRemindersTable = () => {
+  return new Promise((resolve, reject) => {
+    database.transaction((tx) => {
+      tx.executeSql(
+        "DROP TABLE IF EXISTS reminders;",
+        [],
+        (_, result) => {
+          console.log("删除 reminders 表成功");
+          resolve(result);
+        },
+        (_, error) => {
+          console.error("删除 reminders 表时出错：", error);
+          reject(error);
+        }
+      );
+    });
+  });
+};
+
+export const deleteAllBudgeData = () => {
+  return new Promise((resolve, reject) => {
+    database.transaction(
+      (tx) => {
+        tx.executeSql(
+          "DELETE FROM budge",
+          [],
+          () => {
+            console.log("成功删除 budge 表格中的所有数据");
+            resolve();
+          },
+          (error) => {
+            console.error("删除 budge 表格中的数据时发生错误", error);
+            reject(error);
+          }
+        );
+      },
+      (error) => {
+        console.error("数据库事务初始化失败", error);
+        reject(error);
+      },
+      (success) => {
+        console.log("数据库事务初始化成功");
+      }
+    );
+  });
+};

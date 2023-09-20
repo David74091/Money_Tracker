@@ -1,0 +1,38 @@
+{
+  "expo": {
+    "name": "track_spending",
+    "slug": "track_spending",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "backgroundColor": "#fdc231",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "7347a2b8-8aff-4832-9b92-a2ad372b6d75"
+      }
+    },
+
+    "updates": {
+      "url": "https://u.expo.dev/7347a2b8-8aff-4832-9b92-a2ad372b6d75"
+    }
+  }
+}
